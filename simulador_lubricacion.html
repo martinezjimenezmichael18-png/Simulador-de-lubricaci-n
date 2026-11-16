@@ -1,0 +1,1283 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Simulador de lubricación</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap">
+<style>
+/* Panel de instrumentos: controles y lecturas a la izquierda; esquema del circuito, gráficas y tabla a la derecha. */
+:root {
+  --bg: #ffffff;
+  --panel: #f4f5f6;
+  --ink: #15181b;
+  --ink-2: #4b5258;
+  --ink-3: #6f767c;
+  --rule: #e0e3e6;
+  --rule-2: #c3c8cc;
+  --pipe: #60676d;
+  --c1: #2a78d6;
+  --c2: #eb6834;
+  --c3: #1baf7a;
+  --bad: #b3261e;
+  --bad-bg: #fcebea;
+  --band: #eceef0;
+  --focus: #2a78d6;
+  --shadow: rgba(16, 20, 24, .10);
+  --f-display: "Source Serif 4", Georgia, "Times New Roman", serif;
+  --f-ui: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  --f-num: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #111416; --panel: #1a1e21; --ink: #e7eaec; --ink-2: #aab1b7; --ink-3: #8a9197;
+    --rule: #2a2f33; --rule-2: #454c52; --pipe: #9ba2a8;
+    --c1: #4a90e6; --c2: #e36732; --c3: #22aa79;
+    --bad: #ff8a80; --bad-bg: #3b1d1b; --band: #1f2427; --focus: #6aa8f0;
+    --shadow: rgba(0, 0, 0, .45);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #111416; --panel: #1a1e21; --ink: #e7eaec; --ink-2: #aab1b7; --ink-3: #8a9197;
+  --rule: #2a2f33; --rule-2: #454c52; --pipe: #9ba2a8;
+  --c1: #4a90e6; --c2: #e36732; --c3: #22aa79;
+  --bad: #ff8a80; --bad-bg: #3b1d1b; --band: #1f2427; --focus: #6aa8f0;
+  --shadow: rgba(0, 0, 0, .45);
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--f-ui); font-size: 15px; line-height: 1.5; -webkit-font-smoothing: antialiased; }
+h1, h2, h3 { font-family: var(--f-display); font-weight: 600; line-height: 1.2; margin: 0; text-wrap: balance; }
+p { margin: 0; }
+a { color: var(--ink); text-decoration-color: var(--rule-2); text-underline-offset: 3px; }
+a:hover { text-decoration-color: var(--ink); }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.num { font-family: var(--f-num); font-variant-numeric: tabular-nums; }
+.muted { color: var(--ink-3); }
+.small { font-size: 13px; }
+
+.wrap { max-width: 1320px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+.top { border-bottom: 1px solid var(--rule); }
+.top .wrap { padding-block: 28px 22px; display: grid; gap: 8px; }
+.kicker { font-size: 13px; color: var(--ink-3); }
+h1 { font-size: clamp(26px, 1.4vw + 18px, 36px); }
+.lede { color: var(--ink-2); max-width: 92ch; }
+
+.app { display: grid; grid-template-columns: 340px minmax(0, 1fr); gap: 32px; align-items: start; padding-block: 24px 56px; }
+.side { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 16px); max-height: calc(100vh - 32px); overflow: auto; display: flex; flex-direction: column; gap: 14px; padding-bottom: 2px; }
+.main { display: flex; flex-direction: column; gap: 44px; min-width: 0; }
+@media (max-width: 980px) {
+  .app { grid-template-columns: minmax(0, 1fr); }
+  .side { position: static; max-height: none; overflow: visible; }
+}
+
+/* Panel lateral */
+.card { background: var(--panel); border-radius: 10px; padding: 12px 16px 14px; display: flex; flex-direction: column; gap: 10px; }
+.t-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.t-props { display: flex; flex-direction: column; align-items: flex-end; font-size: 12.5px; line-height: 1.4; color: var(--ink-3); white-space: nowrap; }
+.d-note { min-height: 3em; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.h-card { font-family: var(--f-ui); font-size: 13px; font-weight: 600; color: var(--ink-2); letter-spacing: .01em; }
+.row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.big { font-family: var(--f-num); font-variant-numeric: tabular-nums; font-size: 34px; font-weight: 500; line-height: 1; }
+input[type="range"] { width: 100%; margin: 4px 0 0; accent-color: var(--ink); }
+.scale { display: flex; justify-content: space-between; font-size: 12px; color: var(--ink-3); margin-top: -8px; }
+.btn { font: inherit; font-size: 14px; font-weight: 500; display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 9px 14px; border-radius: 8px; border: 1px solid var(--rule-2); background: var(--bg); color: var(--ink); cursor: pointer; }
+.btn:hover { border-color: var(--ink-3); }
+.btn-primary { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.btn-primary:hover { border-color: var(--ink); opacity: .9; }
+.btn svg { width: 14px; height: 14px; flex: none; }
+.seg { display: grid; grid-template-columns: 1fr 1fr; border: 1px solid var(--rule-2); border-radius: 8px; overflow: hidden; }
+.seg button { font: inherit; font-size: 14px; padding: 9px 8px; border: 0; background: var(--bg); color: var(--ink); cursor: pointer; }
+.seg button + button { border-left: 1px solid var(--rule-2); }
+.seg button[aria-pressed="true"] { background: var(--ink); color: var(--bg); font-weight: 600; }
+.check { display: flex; gap: 10px; align-items: flex-start; font-size: 14px; color: var(--ink-2); cursor: pointer; line-height: 1.4; }
+.check input { margin: 2px 0 0; accent-color: var(--ink); width: 16px; height: 16px; flex: none; }
+
+.status { font-size: 15px; line-height: 1.45; }
+.status b { font-weight: 600; }
+.bad { color: var(--bad); }
+.bear { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.bear li { display: grid; grid-template-columns: auto minmax(0, 1fr) 72px; align-items: center; gap: 12px; }
+.sw { width: 10px; height: 10px; border-radius: 2px; flex: none; display: inline-block; }
+.bg1 { background: var(--c1); } .bg2 { background: var(--c2); } .bg3 { background: var(--c3); }
+.b-name { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 500; white-space: nowrap; }
+.b-val { font-family: var(--f-num); font-variant-numeric: tabular-nums; font-size: 14px; text-align: right; white-space: nowrap; }
+.b-val small { font-family: var(--f-ui); font-size: 11.5px; color: var(--ink-3); }
+.b-val.bad { color: var(--bad); font-weight: 600; }
+.b-val.bad small { color: var(--bad); font-weight: 400; }
+.b-bar { position: relative; height: 8px; background: var(--rule); border-radius: 4px; }
+.b-fill { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 4px; transition: width .12s linear; }
+.b-min { position: absolute; top: -5px; bottom: -5px; width: 2px; margin-left: -1px; background: var(--ink); }
+.b-sf { position: absolute; top: -4px; width: 10px; height: 16px; margin-left: -5px; border: 2px solid var(--ink-2); border-radius: 3px; }
+.metrics { margin: 0; display: grid; gap: 4px; border-top: 1px solid var(--rule-2); padding-top: 10px; }
+.metrics div { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; }
+.metrics dt { color: var(--ink-2); font-size: 14px; }
+.metrics dd { margin: 0; font-family: var(--f-num); font-variant-numeric: tabular-nums; font-size: 14px; text-align: right; }
+
+.params summary { cursor: pointer; font-size: 14px; font-weight: 600; list-style: none; display: flex; justify-content: space-between; align-items: center; }
+.params summary::-webkit-details-marker { display: none; }
+.params summary::after { content: "+"; font-family: var(--f-num); font-size: 18px; color: var(--ink-3); line-height: 1; }
+.params[open] summary::after { content: "\2212"; }
+.params[open] summary { margin-bottom: 4px; }
+.pgroup { display: grid; gap: 8px; }
+.pgroup + .pgroup { border-top: 1px solid var(--rule-2); padding-top: 12px; margin-top: 4px; }
+.ptitle { font-size: 12.5px; font-weight: 600; color: var(--ink-3); }
+.pf { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.pf label { font-size: 14px; color: var(--ink-2); }
+.pf label span { color: var(--ink-3); font-size: 12.5px; }
+.pf input { width: 96px; flex: none; }
+input[type="number"], select { font: inherit; font-family: var(--f-num); font-size: 14px; padding: 6px 8px; border: 1px solid var(--rule-2); border-radius: 6px; background: var(--bg); color: var(--ink); min-width: 0; }
+input[aria-invalid="true"] { border-color: var(--bad); box-shadow: 0 0 0 1px var(--bad); }
+.ptab { width: 100%; border-collapse: collapse; table-layout: fixed; }
+.ptab th { font-weight: 500; color: var(--ink-3); text-align: left; padding: 0 4px 6px 0; font-size: 12px; }
+.ptab tbody th { font-family: var(--f-num); color: var(--ink-2); padding: 3px 4px 3px 0; font-size: 13px; }
+.ptab td { padding: 3px 4px 3px 0; }
+.ptab td:last-child { padding-right: 0; }
+.ptab input, .ptab select { width: 100%; padding: 5px 5px; font-size: 13px; }
+.ptab select { font-family: var(--f-ui); padding-right: 2px; }
+.perr { font-size: 13px; color: var(--bad); }
+
+/* Columna principal */
+.block { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.block-head { display: flex; align-items: baseline; justify-content: space-between; gap: 6px 16px; flex-wrap: wrap; border-bottom: 1px solid var(--ink); padding-bottom: 8px; }
+.block-head h2 { font-size: 22px; }
+.sub { color: var(--ink-3); font-size: 14px; }
+.caption { font-size: 13px; color: var(--ink-3); max-width: 82ch; }
+.lead-s { font-size: 16px; max-width: 75ch; }
+.scroll-x { overflow-x: auto; }
+.hint-x { display: none; }
+@media (max-width: 700px) { .hint-x { display: block; } }
+
+.sch { display: block; width: 100%; min-width: 640px; height: auto; }
+.sch text { font-family: var(--f-ui); font-size: 13px; fill: var(--ink); }
+.sch .t2 { fill: var(--ink-2); }
+.sch .t3 { fill: var(--ink-3); font-size: 12px; }
+.sch .tn { font-family: var(--f-num); font-variant-numeric: tabular-nums; }
+.sch .tb { font-weight: 600; }
+.sch .tbad { fill: var(--bad); font-weight: 600; font-size: 12px; }
+.sch .qv { font-family: var(--f-num); font-size: 19px; font-weight: 600; }
+.sch .qu { font-size: 12px; fill: var(--ink-2); }
+.pipe, .br { fill: none; stroke-linecap: butt; }
+.pipe { stroke: var(--pipe); }
+.s1 { stroke: var(--c1); } .s2 { stroke: var(--c2); } .s3 { stroke: var(--c3); }
+.relief { fill: none; stroke: var(--rule-2); stroke-width: 3; stroke-dasharray: 6 5; }
+.relief.on { stroke: var(--pipe); stroke-width: 6; stroke-dasharray: none; }
+.manifold { fill: var(--ink); }
+.sym { fill: var(--bg); stroke: var(--ink); stroke-width: 2; }
+.sym-fill { fill: var(--ink); }
+.sym-line { fill: none; stroke: var(--ink); stroke-width: 1.5; }
+.dash { stroke-dasharray: 3 2; }
+.gauge { fill: var(--bg); stroke: var(--ink); stroke-width: 1.5; }
+.needle { stroke: var(--ink); stroke-width: 2; stroke-linecap: round; }
+.tank { fill: none; stroke: var(--ink); stroke-width: 2; }
+.oil { fill: var(--band); }
+.dot { fill: var(--bg); }
+.bxr { fill: var(--bg); stroke-width: 2; }
+.bxr.fail { fill: var(--bad-bg); }
+.drain { fill: none; stroke: var(--ink); stroke-width: 1.5; }
+
+.charts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 28px 32px; }
+@media (max-width: 1240px) { .charts { grid-template-columns: minmax(0, 1fr); } }
+/* subgrid: las áreas de trazado de las dos gráficas quedan alineadas aunque las leyendas ocupen distinto alto */
+.chart { margin: 0; display: grid; grid-row: span 2; grid-template-rows: subgrid; row-gap: 8px; min-width: 0; }
+.chart figcaption { display: flex; flex-direction: column; gap: 6px; }
+.chart h3 { font-size: 17px; }
+.chart h3 span { font-family: var(--f-ui); font-size: 13px; font-weight: 400; color: var(--ink-3); }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12.5px; color: var(--ink-2); list-style: none; padding: 0; margin: 0; }
+.legend li { display: inline-flex; align-items: center; gap: 6px; }
+.lg { width: 18px; height: 0; border-top: 2.5px solid var(--ink); display: inline-block; }
+.lg.dash { border-top-style: dashed; border-top-width: 2px; }
+.lg1 { border-color: var(--c1); } .lg2 { border-color: var(--c2); } .lg3 { border-color: var(--c3); }
+.lgi { border-color: var(--ink); } .lgi3 { border-color: var(--ink-3); } .lgr { border-color: var(--ink-2); }
+.lg-band { width: 14px; height: 10px; display: inline-block; background: var(--band); border: 1px solid var(--rule-2); border-radius: 2px; }
+.lg-sf { display: inline-flex; gap: 2px; }
+.lg-sf i { display: block; width: 5px; height: 2px; }
+.chart-box { position: relative; }
+.chart-box svg { display: block; width: 100%; height: auto; }
+.ch text { font-family: var(--f-ui); }
+.ch .tick { font-size: 13px; fill: var(--ink-3); font-family: var(--f-num); }
+.ch .axt { font-size: 13px; fill: var(--ink-2); }
+.ch .grid { stroke: var(--rule); stroke-width: 1; }
+.ch .axis { stroke: var(--ink-3); stroke-width: 1; }
+.ch .band { fill: var(--band); }
+.ch .ref-lbl { font-size: 12px; fill: var(--ink-2); paint-order: stroke; stroke: var(--bg); stroke-width: 4px; stroke-linejoin: round; }
+.ch .ref { stroke: var(--ink-2); stroke-width: 1.25; stroke-dasharray: 5 4; }
+.ch .ln { fill: none; stroke-width: 2.25; stroke-linejoin: round; stroke-linecap: round; }
+.ch .sf { stroke-width: 1.5; stroke-dasharray: 6 4; }
+.ch .lni { stroke: var(--ink); } .ch .lni3 { stroke: var(--ink-3); }
+.ch .end { font-size: 13px; fill: var(--ink); }
+.ch .lead { stroke: var(--ink-3); stroke-width: 1; }
+.ch .mk { stroke: var(--ink); stroke-width: 1.25; }
+.ch .mk-lbl { font-size: 12px; font-family: var(--f-num); fill: var(--ink); }
+.ch .mkdot { stroke: var(--bg); stroke-width: 2; }
+.ch .f1 { fill: var(--c1); } .ch .f2 { fill: var(--c2); } .ch .f3 { fill: var(--c3); }
+.ch .fi { fill: var(--ink); } .ch .fi3 { fill: var(--ink-3); }
+.ch .hv { stroke: var(--ink-3); stroke-width: 1; stroke-dasharray: 3 3; }
+.ch .hit { fill: transparent; cursor: crosshair; touch-action: pan-y; }
+.tip { position: absolute; top: 4px; left: 0; pointer-events: none; background: var(--bg); border: 1px solid var(--rule-2); border-radius: 8px; padding: 8px 10px; font-size: 13px; box-shadow: 0 6px 18px var(--shadow); min-width: 168px; z-index: 2; }
+.tip .tt { font-family: var(--f-num); font-weight: 600; margin-bottom: 4px; }
+.tip .tr { display: flex; align-items: center; gap: 8px; line-height: 1.6; }
+.tip .tr .v { margin-left: auto; font-family: var(--f-num); font-variant-numeric: tabular-nums; padding-left: 10px; }
+.tip .tn { color: var(--ink-3); font-size: 12px; margin-top: 2px; }
+
+.dt { border-collapse: collapse; width: 100%; font-size: 14px; font-variant-numeric: tabular-nums; }
+.dt th, .dt td { padding: 8px 10px; text-align: right; border-bottom: 1px solid var(--rule); white-space: nowrap; }
+.dt th:nth-child(-n+2), .dt td:nth-child(-n+2), .dt td.tx, .dt th.tx { text-align: left; }
+.dt thead th { font-weight: 500; color: var(--ink-3); font-size: 12.5px; border-bottom: 1px solid var(--ink-3); vertical-align: bottom; }
+.dt td { font-family: var(--f-num); font-size: 13.5px; }
+.dt td:first-child, .dt td.tx { font-family: var(--f-ui); font-size: 14px; }
+.dt .sw { margin-right: 8px; vertical-align: -1px; }
+.dt tr.fail td.q { color: var(--bad); font-weight: 600; }
+
+.notes { gap: 14px; }
+.notes ol, .notes ul { margin: 0; padding-left: 20px; display: grid; gap: 6px; max-width: 78ch; color: var(--ink-2); }
+.notes p { max-width: 78ch; color: var(--ink-2); }
+.notes h3 { font-size: 16px; margin-top: 6px; }
+@media (prefers-reduced-motion: reduce) { .b-fill { transition: none; } }
+</style>
+<style>[hidden]{display:none!important}</style>
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <p class="kicker">Mecánica de Fluidos 2026-2 · Proyecto de aplicación</p>
+    <h1>Simulador del sistema de lubricación</h1>
+    <p class="lede">Una bomba de engranajes alimenta tres cojinetes por ramales en paralelo. Cambia la temperatura del aceite o el diseño de los ramales y el circuito se recalcula con el mismo modelo del informe.</p>
+  </div>
+</header>
+
+<main class="wrap app">
+  <aside class="side" aria-label="Controles y resultados">
+    <section class="card" aria-labelledby="t-title">
+      <h2 id="t-title" class="h-card">Temperatura del aceite</h2>
+      <div class="t-row">
+        <output id="t-out" class="big" for="t">50.0 °C</output>
+        <p class="t-props num" id="t-props"><span>ν 30.1 cSt</span><span>ρ 848 kg/m³</span></p>
+      </div>
+      <input id="t" type="range" min="0" max="100" step="0.5" value="50" aria-labelledby="t-title">
+      <div class="scale" aria-hidden="true"><span>0 °C</span><span>50 °C</span><span>100 °C</span></div>
+      <button id="play" class="btn btn-primary" type="button">
+        <svg id="play-ic" viewBox="0 0 14 14" aria-hidden="true"><path d="M3 1.5L12 7L3 12.5Z" fill="currentColor"/></svg>
+        <span id="play-txt">Calentar de 10 a 70 °C</span>
+      </button>
+    </section>
+
+    <section class="card" aria-labelledby="d-title">
+      <h2 id="d-title" class="h-card">Diseño de los ramales</h2>
+      <div class="seg" role="group" aria-labelledby="d-title">
+        <button type="button" id="dA" aria-pressed="true">A · inicial</button>
+        <button type="button" id="dB" aria-pressed="false">B · propuesto</button>
+      </div>
+      <p class="small muted d-note" id="d-note">Los tres ramales con tubo 1/2″ × 0.049″.</p>
+      <label class="check"><input type="checkbox" id="sf"> Ver el cálculo sin fricción (solo K)</label>
+    </section>
+
+    <section class="card" aria-labelledby="r-title">
+      <h2 id="r-title" class="h-card">Resultado</h2>
+      <p id="status" class="status" role="status" aria-live="polite"></p>
+      <ul class="bear">
+        <li>
+          <span class="b-name"><span class="sw bg1" aria-hidden="true"></span>Cojinete 1</span>
+          <div class="b-bar" aria-hidden="true"><span class="b-fill bg1" id="bf0"></span><span class="b-min" id="bm0"></span><span class="b-sf" id="bsf0" hidden></span></div>
+          <span class="b-val" id="bv0"></span>
+        </li>
+        <li>
+          <span class="b-name"><span class="sw bg2" aria-hidden="true"></span>Cojinete 2</span>
+          <div class="b-bar" aria-hidden="true"><span class="b-fill bg2" id="bf1"></span><span class="b-min" id="bm1"></span><span class="b-sf" id="bsf1" hidden></span></div>
+          <span class="b-val" id="bv1"></span>
+        </li>
+        <li>
+          <span class="b-name"><span class="sw bg3" aria-hidden="true"></span>Cojinete 3</span>
+          <div class="b-bar" aria-hidden="true"><span class="b-fill bg3" id="bf2"></span><span class="b-min" id="bm2"></span><span class="b-sf" id="bsf2" hidden></span></div>
+          <span class="b-val" id="bv2"></span>
+        </li>
+      </ul>
+      <p class="small muted" id="bar-key"></p>
+      <dl class="metrics">
+        <div><dt>Presión de descarga</dt><dd id="mD"></dd></div>
+        <div><dt>Presión en el múltiple</dt><dd id="mA"></dd></div>
+        <div><dt>Válvula de alivio</dt><dd id="mR"></dd></div>
+        <div><dt>Carga de la bomba</dt><dd id="mH"></dd></div>
+        <div><dt>Potencia en el eje</dt><dd id="mP"></dd></div>
+      </dl>
+    </section>
+
+    <details class="card params" id="params">
+      <summary>Parámetros del sistema</summary>
+      <div class="pgroup">
+        <p class="ptitle">Bomba y requisito</p>
+        <div class="pf"><label for="qt">Caudal de la bomba <span>L/min</span></label><input id="qt" type="number" min="4" max="40" step="0.5" inputmode="decimal"></div>
+        <div class="pf"><label for="pal">Ajuste del alivio <span>kPa</span></label><input id="pal" type="number" min="100" max="2000" step="10" inputmode="decimal"></div>
+        <div class="pf"><label for="eta">Eficiencia de la bomba</label><input id="eta" type="number" min="0.2" max="1" step="0.01" inputmode="decimal"></div>
+        <div class="pf"><label for="qmin">Caudal mínimo por cojinete <span>L/min</span></label><input id="qmin" type="number" min="0.5" max="20" step="0.5" inputmode="decimal"></div>
+      </div>
+      <div class="pgroup">
+        <p class="ptitle">Ramales</p>
+        <table class="ptab">
+          <colgroup><col style="width:7%"><col style="width:43%"><col style="width:17%"><col style="width:15%"><col style="width:18%"></colgroup>
+          <thead><tr><th scope="col">N.º</th><th scope="col">Tubo</th><th scope="col">L [m]</th><th scope="col">Vueltas</th><th scope="col">K coj.</th></tr></thead>
+          <tbody>
+            <tr><th scope="row">1</th><td><select id="tb1" aria-label="Tubo del ramal 1"></select></td><td><input id="L1" type="number" min="0.2" max="20" step="0.1" aria-label="Longitud del ramal 1 en metros"></td><td><input id="v1" type="number" min="0" max="12" step="1" aria-label="Vueltas de 90 grados del ramal 1"></td><td><input id="k1" type="number" min="0" max="100" step="0.5" aria-label="K del cojinete 1"></td></tr>
+            <tr><th scope="row">2</th><td><select id="tb2" aria-label="Tubo del ramal 2"></select></td><td><input id="L2" type="number" min="0.2" max="20" step="0.1" aria-label="Longitud del ramal 2 en metros"></td><td><input id="v2" type="number" min="0" max="12" step="1" aria-label="Vueltas de 90 grados del ramal 2"></td><td><input id="k2" type="number" min="0" max="100" step="0.5" aria-label="K del cojinete 2"></td></tr>
+            <tr><th scope="row">3</th><td><select id="tb3" aria-label="Tubo del ramal 3"></select></td><td><input id="L3" type="number" min="0.2" max="20" step="0.1" aria-label="Longitud del ramal 3 en metros"></td><td><input id="v3" type="number" min="0" max="12" step="1" aria-label="Vueltas de 90 grados del ramal 3"></td><td><input id="k3" type="number" min="0" max="100" step="0.5" aria-label="K del cojinete 3"></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="pgroup">
+        <p class="ptitle">Aceite</p>
+        <div class="pf"><label for="n40">ν a 40 °C <span>cSt</span></label><input id="n40" type="number" min="2" max="2000" step="0.1" inputmode="decimal"></div>
+        <div class="pf"><label for="n100">ν a 100 °C <span>cSt</span></label><input id="n100" type="number" min="1" max="200" step="0.1" inputmode="decimal"></div>
+        <div class="pf"><label for="r15">ρ a 15 °C <span>kg/m³</span></label><input id="r15" type="number" min="600" max="1200" step="1" inputmode="decimal"></div>
+        <p class="perr" id="perr" hidden></p>
+      </div>
+      <p class="small muted">Los botones A y B vuelven a los valores del informe.</p>
+    </details>
+  </aside>
+
+  <div class="main">
+    <section class="block" aria-labelledby="sch-h">
+      <div class="block-head"><h2 id="sch-h">Circuito</h2><p class="sub" id="sch-sub"></p></div>
+      <div class="scroll-x">
+        <svg id="sch" class="sch" viewBox="0 0 820 572" role="img" aria-labelledby="sch-t sch-d">
+          <title id="sch-t">Esquema del circuito de lubricación</title>
+          <desc id="sch-d">Tanque, bomba de engranajes con válvula de alivio, válvula de retención, filtro, múltiple y tres ramales en paralelo hacia los cojinetes, con los caudales y las presiones calculados.</desc>
+          <rect class="oil" x="122" y="524" width="266" height="30"/>
+          <path class="tank" d="M120 510V556H390V510"/>
+          <path id="p-rel" class="relief" d="M234 446H150V552"/>
+          <path id="p-suc" class="pipe" d="M234 552V504" stroke-width="15"/>
+          <path id="p-dis" class="pipe" d="M234 460V316" stroke-width="11"/>
+          <path id="br0" class="br s1" d="M242 76H340" stroke-width="7"/>
+          <path id="br1" class="br s2" d="M242 176H440" stroke-width="7"/>
+          <path id="br2" class="br s3" d="M242 276H636" stroke-width="7"/>
+          <path class="sym-line" d="M226 176H206M234 424H258"/>
+          <g id="dots"></g>
+          <rect class="manifold" x="226" y="36" width="16" height="280"/>
+          <path class="sym" d="M234 335L249 350L234 365L219 350Z"/>
+          <path class="sym-line dash" d="M222 350H246"/>
+          <path class="sym-fill" d="M225 401H243L234 386Z"/>
+          <path class="sym-line" d="M224 383H244"/>
+          <circle class="sym" cx="234" cy="482" r="22"/>
+          <path class="sym-fill" d="M234 461L225.5 475H242.5Z"/>
+          <rect class="sym" x="138" y="462" width="24" height="24"/>
+          <path class="sym-line" d="M143 481L157 467M151 467H157V473"/>
+          <path class="sym-line" d="M138 474L134 469L129 479L124 469L119 479L115 474"/>
+          <circle class="gauge" cx="194" cy="176" r="12"/>
+          <path id="ndA" class="needle" d="M194 176L194 167"/>
+          <circle class="gauge" cx="270" cy="424" r="12"/>
+          <path id="ndD" class="needle" d="M270 424L270 415"/>
+          <text id="sH" x="250" y="22" class="t2"></text>
+          <text x="172" y="171" text-anchor="end" class="tb">Múltiple</text>
+          <text id="sA" x="172" y="190" text-anchor="end" class="tn"></text>
+          <text id="sQm" x="262" y="331" class="t2"></text>
+          <text id="sF" x="262" y="356" class="t2"></text>
+          <text x="262" y="397" class="t2">Retención</text>
+          <text x="290" y="419" class="t2">Descarga de la bomba</text>
+          <text id="sD" x="290" y="438" class="tn tb"></text>
+          <text x="266" y="478" class="tb">Bomba</text>
+          <text id="sP" x="266" y="496" class="tn t2"></text>
+          <text x="106" y="458" text-anchor="end" class="tb">Alivio</text>
+          <text id="sR1" x="106" y="476" text-anchor="end" class="tn t2"></text>
+          <text id="sR2" x="106" y="494" text-anchor="end" class="t2"></text>
+          <text id="sR3" x="106" y="512" text-anchor="end" class="tn tbad"></text>
+          <text id="sTank" x="380" y="546" text-anchor="end" class="t2"></text>
+          <text id="lb0" x="250" y="66" class="t3"></text>
+          <text id="lb1" x="250" y="166" class="t3"></text>
+          <text id="lb2" x="250" y="266" class="t3"></text>
+          <g id="bx0" transform="translate(340 36)">
+            <rect id="bxr0" class="bxr s1" x="0" y="0" width="172" height="80" rx="3"/>
+            <text x="12" y="21" class="tb">Cojinete 1</text>
+            <text id="bk0" x="160" y="21" text-anchor="end" class="t3"></text>
+            <text x="12" y="48"><tspan id="bq0" class="qv"></tspan><tspan class="qu" dx="5">L/min</tspan></text>
+            <text id="bs0" x="12" y="68" class="t3"></text>
+            <path class="drain" d="M30 80V92M20 86V94H40V86"/>
+          </g>
+          <g id="bx1" transform="translate(440 136)">
+            <rect id="bxr1" class="bxr s2" x="0" y="0" width="172" height="80" rx="3"/>
+            <text x="12" y="21" class="tb">Cojinete 2</text>
+            <text id="bk1" x="160" y="21" text-anchor="end" class="t3"></text>
+            <text x="12" y="48"><tspan id="bq1" class="qv"></tspan><tspan class="qu" dx="5">L/min</tspan></text>
+            <text id="bs1" x="12" y="68" class="t3"></text>
+            <path class="drain" d="M30 80V92M20 86V94H40V86"/>
+          </g>
+          <g id="bx2" transform="translate(636 236)">
+            <rect id="bxr2" class="bxr s3" x="0" y="0" width="172" height="80" rx="3"/>
+            <text x="12" y="21" class="tb">Cojinete 3</text>
+            <text id="bk2" x="160" y="21" text-anchor="end" class="t3"></text>
+            <text x="12" y="48"><tspan id="bq2" class="qv"></tspan><tspan class="qu" dx="5">L/min</tspan></text>
+            <text id="bs2" x="12" y="68" class="t3"></text>
+            <path class="drain" d="M30 80V92M20 86V94H40V86"/>
+          </g>
+        </svg>
+      </div>
+      <p class="hint-x small muted">Desliza el esquema hacia los lados para verlo completo.</p>
+      <p class="caption">El grosor de cada línea es proporcional al diámetro interior del tubo y los puntos avanzan a la velocidad media del aceite, con la misma escala en todo el circuito. Bajo cada cojinete, el aceite vuelve al tanque a presión atmosférica.</p>
+    </section>
+
+    <section class="block" aria-labelledby="ch-h">
+      <div class="block-head"><h2 id="ch-h">Barrido de temperatura</h2><p class="sub">De 0 a 100 °C</p></div>
+      <p class="lead-s" id="window"></p>
+      <div class="charts">
+        <figure class="chart">
+          <figcaption>
+            <h3>Caudal en cada cojinete <span>[L/min]</span></h3>
+            <ul class="legend">
+              <li><span class="lg lg1"></span>Cojinete 1</li>
+              <li><span class="lg lg2"></span>Cojinete 2</li>
+              <li><span class="lg lg3"></span>Cojinete 3</li>
+              <li id="lg-sf" hidden><span class="lg-sf"><i class="bg1"></i><i class="bg2"></i><i class="bg3"></i></span>Sin fricción (solo K)</li>
+              <li><span class="lg-band"></span>Alivio abierto</li>
+            </ul>
+          </figcaption>
+          <div class="chart-box"><svg id="ch1" class="ch" viewBox="0 0 460 300" role="img" aria-label="Caudal en cada cojinete frente a la temperatura del aceite"></svg><div class="tip" id="tip1" hidden></div></div>
+        </figure>
+        <figure class="chart">
+          <figcaption>
+            <h3>Presión en el circuito <span>[kPa manométricos]</span></h3>
+            <ul class="legend">
+              <li><span class="lg lgi"></span>Descarga de la bomba</li>
+              <li><span class="lg lgi3"></span>Múltiple</li>
+              <li><span class="lg lgr dash"></span>Ajuste del alivio</li>
+              <li><span class="lg-band"></span>Alivio abierto</li>
+            </ul>
+          </figcaption>
+          <div class="chart-box"><svg id="ch2" class="ch" viewBox="0 0 460 300" role="img" aria-label="Presión de descarga de la bomba y presión en el múltiple frente a la temperatura del aceite"></svg><div class="tip" id="tip2" hidden></div></div>
+        </figure>
+      </div>
+      <p class="caption">Cada punto de las curvas es un estado permanente calculado a esa temperatura. Haz clic o arrastra sobre una gráfica para fijar la temperatura.</p>
+    </section>
+
+    <section class="block" aria-labelledby="tab-h">
+      <div class="block-head"><h2 id="tab-h">Detalle por tramo</h2><p class="sub" id="tab-sub"></p></div>
+      <div class="scroll-x">
+        <table class="dt">
+          <thead>
+            <tr><th scope="col">Tramo</th><th scope="col">Tubo</th><th scope="col">D [mm]</th><th scope="col">L [m]</th><th scope="col">ΣK</th><th scope="col">Q [L/min]</th><th scope="col">v [m/s]</th><th scope="col">Re</th><th scope="col" class="tx">Régimen</th><th scope="col">f</th><th scope="col">h<sub>f</sub> [m]</th><th scope="col">h<sub>m</sub> [m]</th><th scope="col">h<sub>f</sub>/h<sub>m</sub></th></tr>
+          </thead>
+          <tbody id="tab"></tbody>
+        </table>
+      </div>
+      <p class="caption" id="tab-note"></p>
+    </section>
+
+    <section class="block notes" aria-labelledby="n-h">
+      <div class="block-head"><h2 id="n-h">Cómo se calcula</h2></div>
+      <ol>
+        <li>La viscosidad sale de la ecuación de Walther (ASTM D341) con ν a 40 °C y a 100 °C; la densidad varía linealmente con la temperatura.</li>
+        <li>En cada tramo la pérdida es h = f (L/D) v²/2g + ΣK v²/2g, con f = 64/Re en flujo laminar y la ecuación de Swamee-Jain en turbulento. Entre Re = 2000 y 4000 el factor se interpola.</li>
+        <li>Las vueltas de 90° usan L<sub>e</sub>/D según r/D (Mott, fig. 10.27) por f<sub>T</sub>; la entrada desde el múltiple vale K = 0.5.</li>
+        <li>En los ramales en paralelo la pérdida es la misma en los tres y los caudales suman lo que llega al múltiple. El sistema se resuelve por iteración sobre la carga del nodo.</li>
+        <li>La presión de descarga sale de la ecuación de la energía entre la bomba y el múltiple. Si supera el ajuste del alivio, la válvula devuelve el exceso al tanque.</li>
+      </ol>
+      <p>Valores fijos del informe: succión de 1″ × 0.065″ (0.8 m); suministro de 3/4″ × 0.065″ (6 m) con válvula de retención, tres vueltas y filtro (30 kPa limpio a 18 L/min y 30 cSt); nivel del tanque a −1.2 m y bomba a −1.6 m respecto a los cojinetes. Con el diseño A a 50 °C el simulador da 8.22, 6.33 y 3.45 L/min, los mismos valores del informe.</p>
+      <h3>Referencias</h3>
+      <ul>
+        <li>Mott, R. L. (2006). <i>Mecánica de fluidos</i> (6.ª ed.). Pearson. Caps. 8, 10, 11 y 12.</li>
+        <li>Çengel, Y. A. y Cimbala, J. M. (2006). <i>Mecánica de fluidos: fundamentos y aplicaciones</i>. McGraw-Hill. Cap. 8.</li>
+        <li>ASTM D341. Ecuaciones de viscosidad y temperatura para productos líquidos del petróleo.</li>
+        <li>Q8Oils. <a href="https://www.q8oils.com/wp-content/uploads/2026/03/Q8-van-Gogh-46_en.pdf" target="_blank" rel="noopener">Hoja técnica de Q8 van Gogh 46</a>.</li>
+      </ul>
+    </section>
+  </div>
+</main>
+
+<script>
+// <modelo>
+const Modelo = (() => {
+  'use strict';
+  const G = 9.81, LPM = 1 / 60000, EPS = 1.5e-6;
+  const TUBOS = [
+    { id: 't12_049', nombre: '1/2″ × 0.049″', od: 0.500, t: 0.049 },
+    { id: 't12_035', nombre: '1/2″ × 0.035″', od: 0.500, t: 0.035 },
+    { id: 't58_065', nombre: '5/8″ × 0.065″', od: 0.625, t: 0.065 },
+    { id: 't58_049', nombre: '5/8″ × 0.049″', od: 0.625, t: 0.049 },
+    { id: 't58_035', nombre: '5/8″ × 0.035″', od: 0.625, t: 0.035 },
+    { id: 't34_065', nombre: '3/4″ × 0.065″', od: 0.750, t: 0.065 },
+    { id: 't34_049', nombre: '3/4″ × 0.049″', od: 0.750, t: 0.049 },
+    { id: 't78_065', nombre: '7/8″ × 0.065″', od: 0.875, t: 0.065 },
+    { id: 't1_065', nombre: '1″ × 0.065″', od: 1.000, t: 0.065 }
+  ];
+  const tuboPorId = {};
+  TUBOS.forEach(t => { tuboPorId[t.id] = t; });
+  const diam = (od, t) => (od - 2 * t) * 0.0254;
+
+  // Método de Brent (zbrent): raíz de f en [a, b] con f(a)·f(b) < 0.
+  function brent(f, a, b, tol) {
+    let fa = f(a), fb = f(b);
+    if (fa === 0) return a;
+    if (fb === 0) return b;
+    if ((fa > 0) === (fb > 0)) throw new Error('raíz no encerrada');
+    let c = b, fc = fb, d = b - a, e = d;
+    for (let it = 0; it < 300; it++) {
+      if ((fb > 0) === (fc > 0)) { c = a; fc = fa; d = b - a; e = d; }
+      if (Math.abs(fc) < Math.abs(fb)) { a = b; b = c; c = a; fa = fb; fb = fc; fc = fa; }
+      const tol1 = 2 * Number.EPSILON * Math.abs(b) + 0.5 * tol;
+      const xm = 0.5 * (c - b);
+      if (Math.abs(xm) <= tol1 || fb === 0) return b;
+      if (Math.abs(e) >= tol1 && Math.abs(fa) > Math.abs(fb)) {
+        const s = fb / fa;
+        let p, q;
+        if (a === c) { p = 2 * xm * s; q = 1 - s; }
+        else {
+          const qq = fa / fc, r = fb / fc;
+          p = s * (2 * xm * qq * (qq - r) - (b - a) * (r - 1));
+          q = (qq - 1) * (r - 1) * (s - 1);
+        }
+        if (p > 0) q = -q;
+        p = Math.abs(p);
+        const min1 = 3 * xm * q - Math.abs(tol1 * q), min2 = Math.abs(e * q);
+        if (2 * p < Math.min(min1, min2)) { e = d; d = p / q; } else { d = xm; e = d; }
+      } else { d = xm; e = d; }
+      a = b; fa = fb;
+      b += Math.abs(d) > tol1 ? d : (xm >= 0 ? Math.abs(tol1) : -Math.abs(tol1));
+      fb = f(b);
+    }
+    return b;
+  }
+
+  const fT = D => 0.25 / Math.log10(1 / (3.7 * D / EPS)) ** 2;
+  const fSJ = (Re, D) => 0.25 / Math.log10(1 / (3.7 * D / EPS) + 5.74 / Re ** 0.9) ** 2;
+  function fDarcy(Re, D) {
+    if (Re <= 0) return 0;
+    if (Re < 2000) return 64 / Re;
+    if (Re > 4000) return fSJ(Re, D);
+    const fl = 64 / 2000, ft = fSJ(4000, D);
+    return fl + (ft - fl) * (Re - 2000) / 2000;
+  }
+  const regimen = Re => (Re < 2000 ? 'laminar' : Re > 4000 ? 'turbulento' : 'crítico');
+  const R_D = [1, 2, 3, 4, 6, 8, 10, 12, 14, 16, 20];
+  const LE_D = [20, 12, 12, 14, 17, 24, 30, 34, 38, 42, 50];
+  function interp(x, xs, ys) {
+    const n = xs.length;
+    if (x <= xs[0]) return ys[0];
+    if (x >= xs[n - 1]) return ys[n - 1];
+    let i = 1;
+    while (xs[i] < x) i++;
+    return ys[i - 1] + (ys[i] - ys[i - 1]) * (x - xs[i - 1]) / (xs[i] - xs[i - 1]);
+  }
+
+  // Aceite: Walther / ASTM D341 con ν a 40 y 100 °C; densidad lineal con la temperatura.
+  function aceite(nu40, nu100, rho15, alfa) {
+    alfa = alfa || 6.5e-4;
+    const T1 = 313.15, T2 = 373.15;
+    const Z1 = Math.log10(Math.log10(nu40 + 0.7)), Z2 = Math.log10(Math.log10(nu100 + 0.7));
+    const B = (Z1 - Z2) / (Math.log10(T2) - Math.log10(T1));
+    const A = Z1 + B * Math.log10(T1);
+    const nuCst = T => 10 ** (10 ** (A - B * Math.log10(T + 273.15))) - 0.7;
+    return { A, B, nuCst, nu: T => nuCst(T) * 1e-6, rho: T => rho15 * (1 - alfa * (T - 15)) };
+  }
+
+  // Tramo de tubería: fricción (Darcy), pérdidas menores (K y Le/D·fT) y filtro opcional.
+  function tramo(o) {
+    const L = o.L, D = o.D, A = Math.PI * D * D / 4, ft = fT(D);
+    const vueltas = o.vueltas || 0, r = o.r || 0.1;
+    const LeDv = interp(r / D, R_D, LE_D);
+    const Kv = vueltas ? vueltas * LeDv * ft : 0;
+    const Ktot = (o.K || 0) + (o.LeD || 0) * ft + Kv;
+    const fil = o.filtro || null;
+    function h(Q, pr) {
+      if (!(Q > 0)) return 0;
+      const V = Q / A, Re = V * D / pr.nu, hv = V * V / (2 * G);
+      let s = fDarcy(Re, D) * (L / D) * hv + Ktot * hv;
+      if (fil) s += fil.dp * (pr.nu / fil.nu) * (Q / fil.Q) / (pr.rho * G);
+      return s;
+    }
+    function perdidas(Q, pr) {
+      const V = Q / A, Re = Q > 0 ? V * D / pr.nu : 0, f = fDarcy(Re, D), hv = V * V / (2 * G);
+      const hf = f * (L / D) * hv, hm = Ktot * hv;
+      const hfil = fil && Q > 0 ? fil.dp * (pr.nu / fil.nu) * (Q / fil.Q) / (pr.rho * G) : 0;
+      return { Q, V, Re, f, hv, hf, hm, hfil, h: hf + hm + hfil, regimen: regimen(Re) };
+    }
+    function caudal(H, pr) {
+      if (!(H > 0)) return 0;
+      let hi = 1e-6;
+      for (let n = 0; n < 200 && h(hi, pr) < H; n++) hi *= 2;
+      return brent(q => h(q, pr) - H, 0, hi, 1e-13);
+    }
+    return { L, D, A, ft, LeDv, Kv, Ktot, vueltas, perdidas, h, caudal };
+  }
+
+  // Ramales en paralelo: misma pérdida H en todos y suma de caudales = QT.
+  function reparto(ramales, QT, pr) {
+    const suma = H => { let s = 0; for (const r of ramales) s += r.caudal(H, pr); return s; };
+    let hi = 0.1;
+    for (let n = 0; n < 200 && suma(hi) < QT; n++) hi *= 2;
+    const H = brent(x => suma(x) - QT, 0, hi, 1e-12);
+    return { H, Qs: ramales.map(r => r.caudal(H, pr)) };
+  }
+  function repartoSinFriccion(ramales, QT) {
+    const c = ramales.map(r => r.A * Math.sqrt(2 * G / r.Ktot));
+    const s = c.reduce((x, y) => x + y, 0);
+    const H = (QT / s) ** 2;
+    return { H, Qs: c.map(ci => ci * Math.sqrt(H)) };
+  }
+
+  function sistema(p) {
+    const ac = aceite(p.nu40, p.nu100, p.rho15);
+    const succion = tramo({ L: 0.8, D: diam(1.0, 0.065), K: 1.0, LeD: 30 });
+    const suministro = tramo({ L: 6.0, D: diam(0.75, 0.065), K: 1.0, LeD: 100, vueltas: 3, filtro: { dp: 30e3, Q: 18 * LPM, nu: 30e-6 } });
+    const ramales = p.tubos.map((id, i) => {
+      const t = tuboPorId[id];
+      return tramo({ L: p.L[i], D: diam(t.od, t.t), K: 0.5 + p.Kc[i], vueltas: p.vueltas[i] });
+    });
+    const QT = p.QT_lpm * LPM, pAl = p.pAlivio_kPa * 1e3, zT = -1.2, zB = -1.6;
+    const props = T => ({ nu: ac.nu(T), rho: ac.rho(T) });
+    function estado(Q, pr) {
+      const gam = pr.rho * G;
+      const rp = reparto(ramales, Q, pr);
+      const pA = gam * rp.H;
+      const ds = suministro.perdidas(Q, pr);
+      const pD = pA + gam * ((0 - zB) + ds.h) - pr.rho * ds.V * ds.V / 2;
+      return { H: rp.H, Qs: rp.Qs, pA, pD, ds };
+    }
+    function resolver(T) {
+      const pr = props(T), gam = pr.rho * G;
+      const e0 = estado(QT, pr);
+      let e = e0, Qm = QT, Qal = 0, alivio = false;
+      if (e0.pD > pAl) {
+        alivio = true;
+        const g = q => estado(q, pr).pD - pAl;
+        Qm = g(1e-9) >= 0 ? 1e-9 : brent(g, 1e-9, QT, 1e-12);
+        e = estado(Qm, pr);
+        Qal = QT - Qm;
+      }
+      const dsuc = succion.perdidas(QT, pr);
+      const pS = gam * (zT - zB - dsuc.h) - pr.rho * dsuc.V * dsuc.V / 2;
+      const VD = QT / suministro.A;
+      const hB = (e.pD - pS) / gam + (VD * VD - dsuc.V * dsuc.V) / (2 * G);
+      const Phid = gam * QT * hB;
+      return {
+        T, nuCst: ac.nuCst(T), rho: pr.rho, H: e.H, Qs: e.Qs, pA: e.pA, pD: e.pD, pDlleno: e0.pD,
+        pS, hB, Phid, Peje: Phid / p.eta, alivio, Qm, Qal, sum: e.ds, succ: dsuc,
+        ram: ramales.map((r, i) => r.perdidas(e.Qs[i], pr))
+      };
+    }
+    return { ac, succion, suministro, ramales, QT, pAl, props, estado, resolver, sinFriccion: repartoSinFriccion(ramales, QT) };
+  }
+
+  return { G, LPM, TUBOS, tuboPorId, diam, brent, aceite, tramo, sistema };
+})();
+// </modelo>
+
+(() => {
+  'use strict';
+  const M = Modelo, LPM = M.LPM, G = M.G;
+  const $ = id => document.getElementById(id);
+  const NS = 'http://www.w3.org/2000/svg';
+  const DEF = { tubos: ['t12_049', 't12_049', 't12_049'], L: [1.5, 3, 6], vueltas: [2, 3, 4], Kc: [11, 4, 4], QT_lpm: 18, pAlivio_kPa: 500, eta: 0.8, Qmin_lpm: 5, nu40: 46, nu100: 6.9, rho15: 868 };
+  const PRESETS = { A: DEF, B: Object.assign({}, DEF, { tubos: ['t12_049', 't12_035', 't58_049'] }) };
+  const clone = o => JSON.parse(JSON.stringify(o));
+  const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  let P = clone(PRESETS.A), T = 50, sf = false, sis = null, sweep = null, res = null;
+  const reduceMotion = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+
+  // Formatos
+  const f1 = x => x.toFixed(1), f2 = x => x.toFixed(2);
+  const neg = s => String(s).replace('-', '−');
+  const trim = (x, d) => String(+x.toFixed(d === undefined ? 2 : d));
+  const tTxt = t => trim(t, 1);
+  const lpm = q => q / LPM;
+  const fmtInt = n => String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+  const pct = (q, qmin) => Math.round((q / qmin - 1) * 100);
+
+  // ---------- barrido de temperatura ----------
+  function intervals(startOn, bounds) {
+    const out = [];
+    let on = startOn, a = 0;
+    bounds.forEach(b => { if (on) out.push([a, b]); else a = b; on = !on; });
+    if (on) out.push([a, 100]);
+    return out;
+  }
+  function refine(pts, g) {
+    const out = [];
+    for (let i = 0; i + 1 < pts.length; i++) {
+      const a = g(pts[i]), b = g(pts[i + 1]);
+      if ((a >= 0) !== (b >= 0)) {
+        let t;
+        try { t = M.brent(x => g(sis.resolver(x)), pts[i].T, pts[i + 1].T, 1e-3); }
+        catch (err) { t = (pts[i].T + pts[i + 1].T) / 2; }
+        out.push(t);
+      }
+    }
+    return out;
+  }
+  function computeSweep() {
+    const pts = [];
+    for (let t = 0; t <= 100; t += 1) pts.push(sis.resolver(t));
+    const qmin = P.Qmin_lpm * LPM;
+    const gRel = r => r.pDlleno - sis.pAl;
+    const gWin = r => Math.min(r.Qs[0], r.Qs[1], r.Qs[2]) - qmin;
+    const relB = refine(pts, gRel), winB = refine(pts, gWin);
+    relB.forEach(t => pts.push(sis.resolver(t)));
+    pts.sort((a, b) => a.T - b.T);
+    let maxQ = 0;
+    pts.forEach(r => r.Qs.forEach(q => { if (q > maxQ) maxQ = q; }));
+    return { pts, relI: intervals(gRel(pts[0]) >= 0, relB), winI: intervals(gWin(pts[0]) >= 0, winB), maxQ: lpm(maxQ) };
+  }
+
+  // ---------- esquema ----------
+  const SCH = { x0: 242, ys: [76, 176, 276], boxW: 172, right: 808 };
+  const pipeW = D => Math.max(4, Math.min(16, D * 1000 * 0.7));
+  const flows = {
+    suc: { pts: [[234, 552], [234, 504]] },
+    dis: { pts: [[234, 460], [234, 316]] },
+    rel: { pts: [[234, 446], [150, 446], [150, 552]] },
+    b0: { pts: [] }, b1: { pts: [] }, b2: { pts: [] }
+  };
+  function along(f, s) {
+    for (const sg of f.segs) {
+      if (s <= sg.l) return [sg.x1 + sg.dx * s, sg.y1 + sg.dy * s];
+      s -= sg.l;
+    }
+    const sg = f.segs[f.segs.length - 1];
+    return [sg.x1 + sg.dx * sg.l, sg.y1 + sg.dy * sg.l];
+  }
+  function place(f) {
+    for (let k = 0; k < f.dots.length; k++) {
+      const p = along(f, f.off + k * f.spacing);
+      f.dots[k].setAttribute('cx', p[0].toFixed(1));
+      f.dots[k].setAttribute('cy', p[1].toFixed(1));
+    }
+  }
+  function buildDots() {
+    const host = $('dots');
+    while (host.firstChild) host.removeChild(host.firstChild);
+    Object.keys(flows).forEach(key => {
+      const f = flows[key];
+      f.segs = [];
+      let len = 0;
+      for (let i = 0; i + 1 < f.pts.length; i++) {
+        const x1 = f.pts[i][0], y1 = f.pts[i][1], x2 = f.pts[i + 1][0], y2 = f.pts[i + 1][1];
+        const l = Math.hypot(x2 - x1, y2 - y1);
+        if (l > 0) { f.segs.push({ x1, y1, dx: (x2 - x1) / l, dy: (y2 - y1) / l, l }); len += l; }
+      }
+      f.len = len;
+      const n = Math.max(2, Math.floor(len / 18));
+      f.spacing = len / n;
+      f.off = (f.off || 0) % f.spacing;
+      const r = key === 'rel' ? 1.8 : Math.min(2.4, (f.w || 6) * 0.3);
+      const g = document.createElementNS(NS, 'g');
+      host.appendChild(g);
+      f.g = g;
+      f.dots = [];
+      for (let k = 0; k < n; k++) {
+        const c = document.createElementNS(NS, 'circle');
+        c.setAttribute('r', r.toFixed(2));
+        c.setAttribute('class', 'dot');
+        g.appendChild(c);
+        f.dots.push(c);
+      }
+      place(f);
+    });
+  }
+  function layoutSchematic() {
+    const Lmax = Math.max(6, P.L[0], P.L[1], P.L[2]);
+    const k = (SCH.right - SCH.boxW - SCH.x0) / Lmax;
+    sis.ramales.forEach((r, i) => {
+      const len = Math.max(56, P.L[i] * k), xb = SCH.x0 + len, y = SCH.ys[i], w = pipeW(r.D);
+      const br = $('br' + i);
+      br.setAttribute('d', `M${SCH.x0} ${y}H${xb.toFixed(1)}`);
+      br.setAttribute('stroke-width', w.toFixed(1));
+      $('bx' + i).setAttribute('transform', `translate(${xb.toFixed(1)} ${y - 40})`);
+      const full = `${trim(P.L[i])} m · Ø ${(r.D * 1000).toFixed(1)} mm`;
+      const lb = $('lb' + i);
+      lb.textContent = len >= 150 ? full : `${trim(P.L[i])} m`;
+      lb.setAttribute('y', (y - w / 2 - 7).toFixed(1));
+      flows['b' + i].pts = [[SCH.x0, y], [xb, y]];
+      flows['b' + i].w = w;
+      $('bk' + i).textContent = `K = ${trim(P.Kc[i], 1)}`;
+    });
+    const wd = pipeW(sis.suministro.D), ws = pipeW(sis.succion.D);
+    $('p-dis').setAttribute('stroke-width', wd.toFixed(1));
+    $('p-suc').setAttribute('stroke-width', ws.toFixed(1));
+    flows.dis.w = wd; flows.suc.w = ws; flows.rel.w = 6;
+    buildDots();
+  }
+  function needle(id, cx, cy, p) {
+    const frac = Math.max(0, Math.min(1, p / (1.2 * sis.pAl)));
+    const a = (-135 + 270 * frac) * Math.PI / 180;
+    $(id).setAttribute('d', `M${cx} ${cy}L${(cx + 9 * Math.sin(a)).toFixed(1)} ${(cy - 9 * Math.cos(a)).toFixed(1)}`);
+  }
+  const VSCALE = 40; // px/s por cada m/s de velocidad media
+  function renderSchematic() {
+    const r = res, qmin = P.Qmin_lpm * LPM;
+    for (let i = 0; i < 3; i++) {
+      const q = r.Qs[i], ok = q >= qmin * (1 - 1e-9), d = pct(q, qmin);
+      $('bq' + i).textContent = f2(lpm(q));
+      const st = $('bs' + i);
+      st.textContent = ok ? `cumple (+${d} %)` : `bajo el mínimo (${neg(d)} %)`;
+      st.setAttribute('class', ok ? 't3' : 'tbad');
+      $('bxr' + i).classList.toggle('fail', !ok);
+      flows['b' + i].speed = r.ram[i].V * VSCALE;
+    }
+    $('sH').textContent = `Pérdida de carga en cada ramal: ${f2(r.H)} m de aceite`;
+    $('sA').textContent = `${f1(r.pA / 1e3)} kPa`;
+    $('sQm').textContent = `Al múltiple: ${f2(lpm(r.Qm))} L/min`;
+    $('sF').textContent = `Filtro: ${f1(r.sum.hfil * r.rho * G / 1e3)} kPa`;
+    $('sD').textContent = `${f1(r.pD / 1e3)} kPa`;
+    $('sP').textContent = `${trim(P.QT_lpm, 1)} L/min`;
+    $('sR1').textContent = `${trim(P.pAlivio_kPa, 0)} kPa`;
+    $('sR2').textContent = r.alivio ? 'abierta' : 'cerrada';
+    $('sR3').textContent = r.alivio ? `${f2(lpm(r.Qal))} L/min` : '';
+    $('p-rel').classList.toggle('on', r.alivio);
+    $('sTank').textContent = `Tanque · ${f1(T)} °C`;
+    needle('ndA', 194, 176, r.pA);
+    needle('ndD', 270, 424, r.pD);
+    flows.suc.speed = r.succ.V * VSCALE;
+    flows.dis.speed = r.sum.V * VSCALE;
+    flows.rel.speed = r.alivio ? (r.Qal / sis.suministro.A) * VSCALE : 0;
+    if (flows.rel.g) flows.rel.g.setAttribute('visibility', r.alivio ? 'visible' : 'hidden');
+  }
+  let lastTick = 0;
+  function tick(now) {
+    const dt = lastTick ? Math.min(0.05, (now - lastTick) / 1000) : 0;
+    lastTick = now;
+    Object.keys(flows).forEach(key => {
+      const f = flows[key];
+      if (!f.dots || !f.speed) return;
+      f.off = (f.off + f.speed * dt) % f.spacing;
+      place(f);
+    });
+    requestAnimationFrame(tick);
+  }
+
+  // ---------- gráficas ----------
+  // Las gráficas se dibujan al ancho real de su caja para que el texto mantenga su tamaño.
+  const CH = { W: 460, H: 300, l: 46, r: 94, t: 24, b: 44 };
+  let PW = CH.W - CH.l - CH.r, PH = CH.H - CH.t - CH.b;
+  const X = t => CH.l + t / 100 * PW;
+  function sizeCharts() {
+    const w = Math.round($('ch1').parentElement.clientWidth) || 460;
+    CH.W = Math.max(300, w);
+    CH.H = Math.round(Math.min(330, Math.max(260, CH.W * 0.62)));
+    PW = CH.W - CH.l - CH.r;
+    PH = CH.H - CH.t - CH.b;
+    ['ch1', 'ch2'].forEach(id => $(id).setAttribute('viewBox', `0 0 ${CH.W} ${CH.H}`));
+  }
+  let Y1 = v => v, Y2 = v => v;
+  function nice(v, n) {
+    const raw = v / n, p = Math.pow(10, Math.floor(Math.log10(raw))), m = raw / p;
+    const s = (m <= 1 ? 1 : m <= 2 ? 2 : m <= 2.5 ? 2.5 : m <= 5 ? 5 : 10) * p;
+    return { step: s, max: Math.ceil(v / s - 1e-9) * s };
+  }
+  const tickTxt = v => trim(v, 2);
+  function frameSVG(Y, step, max) {
+    let s = '';
+    sweep.relI.forEach(iv => {
+      const w = X(iv[1]) - X(iv[0]);
+      s += `<rect class="band" x="${X(iv[0]).toFixed(1)}" y="${CH.t}" width="${Math.max(0, w).toFixed(1)}" height="${PH}"/>`;
+    });
+    for (let v = 0; v <= max + 1e-9; v += step) {
+      const y = Y(v).toFixed(1);
+      s += `<line class="grid" x1="${CH.l}" x2="${CH.l + PW}" y1="${y}" y2="${y}"/><text class="tick" x="${CH.l - 8}" y="${(Y(v) + 4).toFixed(1)}" text-anchor="end">${tickTxt(v, step)}</text>`;
+    }
+    for (let t = 0; t <= 100; t += 20) s += `<text class="tick" x="${X(t).toFixed(1)}" y="${CH.t + PH + 20}" text-anchor="middle">${t}</text>`;
+    s += `<line class="axis" x1="${CH.l}" x2="${CH.l + PW}" y1="${CH.t + PH}" y2="${CH.t + PH}"/>`;
+    s += `<text class="axt" x="${CH.l + PW / 2}" y="${CH.H - 6}" text-anchor="middle">Temperatura del aceite [°C]</text>`;
+    return s;
+  }
+  function endLabels(items) {
+    const xs = CH.l + PW;
+    items.sort((a, b) => a.y - b.y);
+    const pos = items.map(it => it.y);
+    for (let i = 1; i < pos.length; i++) pos[i] = Math.max(pos[i], pos[i - 1] + 16);
+    const over = pos[pos.length - 1] - (CH.t + PH - 2);
+    if (over > 0) for (let i = 0; i < pos.length; i++) pos[i] -= over;
+    for (let i = pos.length - 2; i >= 0; i--) pos[i] = Math.min(pos[i], pos[i + 1] - 16);
+    let s = '';
+    items.forEach((it, i) => {
+      s += `<line class="lead" x1="${xs + 2}" y1="${it.y.toFixed(1)}" x2="${xs + 8}" y2="${pos[i].toFixed(1)}"/><text class="end" x="${xs + 11}" y="${(pos[i] + 4.5).toFixed(1)}">${it.text}</text>`;
+    });
+    return s;
+  }
+  const pathOf = (pts, val, Y) => pts.map((r, k) => (k ? 'L' : 'M') + X(r.T).toFixed(1) + ' ' + Y(val(r)).toFixed(1)).join('');
+  // Rótulo de una línea horizontal de referencia: se busca un tramo sin curvas cerca
+  // (derecha, después de la franja del alivio o centro; encima o debajo de la línea).
+  function refLabel(yl, text, avoid) {
+    const w = text.length * 6.6 + 6;
+    const b0 = sweep.relI.length && sweep.relI[0][0] <= 0 ? X(sweep.relI[0][1]) : CH.l;
+    const xs = [[CH.l + PW - 4 - w, CH.l + PW - 4, 'end'], [b0 + 6, b0 + 6, 'start'], [CH.l + (PW - w) / 2, CH.l + PW / 2, 'middle']];
+    const sides = [[-6, yl - 17, yl - 3], [16, yl + 4, yl + 19]];
+    for (const [x0, xa, anchor] of xs) {
+      if (x0 < CH.l || x0 + w > CH.l + PW) continue;
+      for (const [dy, top, bot] of sides) {
+        if (top < CH.t || bot > CH.t + PH) continue;
+        const hit = sweep.pts.some(r => {
+          const x = X(r.T);
+          return x >= x0 - 4 && x <= x0 + w + 4 && avoid.some(f => { const y = f(r); return y > top - 3 && y < bot + 3; });
+        });
+        if (!hit) return `<text class="ref-lbl" x="${xa.toFixed(1)}" y="${(yl + dy).toFixed(1)}" text-anchor="${anchor}">${text}</text>`;
+      }
+    }
+    return `<text class="ref-lbl" x="${(CH.l + PW - 4).toFixed(1)}" y="${(yl - 6).toFixed(1)}" text-anchor="end">${text}</text>`;
+  }
+  // El rótulo de la línea de referencia (extra) va sobre la línea del marcador.
+  function markerSVG(n, dots, extra) {
+    return `<g><line class="mk" id="ch${n}-ml" x1="0" x2="0" y1="${CH.t}" y2="${CH.t + PH}"/><text class="mk-lbl" id="ch${n}-mt" x="0" y="${CH.t - 8}" text-anchor="middle"></text>${dots}</g>${extra || ''}` +
+      `<line class="hv" id="ch${n}-hv" x1="0" x2="0" y1="${CH.t}" y2="${CH.t + PH}" visibility="hidden"/>` +
+      `<rect class="hit" x="${CH.l}" y="${CH.t}" width="${PW}" height="${PH}"/>`;
+  }
+  function buildChart1() {
+    const pts = sweep.pts, qmin = P.Qmin_lpm;
+    const sfq = sis.sinFriccion.Qs.map(lpm);
+    let top = Math.max(qmin, sweep.maxQ);
+    if (sf) top = Math.max(top, sfq[0], sfq[1], sfq[2]);
+    const nc = nice(top * 1.06, 5);
+    const Y = v => CH.t + PH - v / nc.max * PH;
+    Y1 = Y;
+    let s = frameSVG(Y, nc.step, nc.max);
+    s += `<line class="ref" x1="${CH.l}" x2="${CH.l + PW}" y1="${Y(qmin).toFixed(1)}" y2="${Y(qmin).toFixed(1)}"/>`;
+    if (sf) sfq.forEach((q, i) => { s += `<line class="sf s${i + 1}" x1="${CH.l}" x2="${CH.l + PW}" y1="${Y(q).toFixed(1)}" y2="${Y(q).toFixed(1)}"/>`; });
+    for (let i = 0; i < 3; i++) s += `<path class="ln s${i + 1}" d="${pathOf(pts, r => lpm(r.Qs[i]), Y)}"/>`;
+    const avoid = [0, 1, 2].map(i => r => Y(lpm(r.Qs[i])));
+    if (sf) sfq.forEach(q => avoid.push(() => Y(q)));
+    const lbl = refLabel(Y(qmin), `mínimo ${trim(qmin)} L/min`, avoid);
+    const last = pts[pts.length - 1];
+    s += endLabels(last.Qs.map((q, i) => ({ y: Y(lpm(q)), text: `Cojinete ${i + 1}` })));
+    s += markerSVG(1, [0, 1, 2].map(i => `<circle class="mkdot f${i + 1}" id="ch1-d${i}" r="4.5" cx="0" cy="0"/>`).join(''), lbl);
+    $('ch1').innerHTML = s;
+    $('lg-sf').hidden = !sf;
+  }
+  function buildChart2() {
+    const pts = sweep.pts, pal = P.pAlivio_kPa;
+    let top = pal;
+    pts.forEach(r => { if (r.pD / 1e3 > top) top = r.pD / 1e3; });
+    const nc = nice(top * 1.1, 5);
+    const Y = v => CH.t + PH - v / nc.max * PH;
+    Y2 = Y;
+    let s = frameSVG(Y, nc.step, nc.max);
+    s += `<line class="ref" x1="${CH.l}" x2="${CH.l + PW}" y1="${Y(pal).toFixed(1)}" y2="${Y(pal).toFixed(1)}"/>`;
+    s += `<path class="ln lni3" d="${pathOf(pts, r => r.pA / 1e3, Y)}"/>`;
+    s += `<path class="ln lni" d="${pathOf(pts, r => r.pD / 1e3, Y)}"/>`;
+    const lbl = refLabel(Y(pal), `ajuste del alivio · ${trim(pal, 0)} kPa`, [r => Y(r.pA / 1e3), r => Y(r.pD / 1e3)]);
+    const last = pts[pts.length - 1];
+    s += endLabels([{ y: Y(last.pD / 1e3), text: 'Descarga' }, { y: Y(last.pA / 1e3), text: 'Múltiple' }]);
+    s += markerSVG(2, `<circle class="mkdot fi3" id="ch2-dA" r="4.5" cx="0" cy="0"/><circle class="mkdot fi" id="ch2-dD" r="4.5" cx="0" cy="0"/>`, lbl);
+    $('ch2').innerHTML = s;
+  }
+  function renderMarkers() {
+    const x = X(T).toFixed(1);
+    const anchor = T < 8 ? 'start' : T > 92 ? 'end' : 'middle';
+    [1, 2].forEach(n => {
+      const l = $('ch' + n + '-ml');
+      l.setAttribute('x1', x); l.setAttribute('x2', x);
+      const tx = $('ch' + n + '-mt');
+      tx.setAttribute('x', x); tx.setAttribute('text-anchor', anchor);
+      tx.textContent = `${f1(T)} °C`;
+    });
+    res.Qs.forEach((q, i) => { const c = $('ch1-d' + i); c.setAttribute('cx', x); c.setAttribute('cy', Y1(lpm(q)).toFixed(1)); });
+    const dD = $('ch2-dD'), dA = $('ch2-dA');
+    dD.setAttribute('cx', x); dD.setAttribute('cy', Y2(res.pD / 1e3).toFixed(1));
+    dA.setAttribute('cx', x); dA.setAttribute('cy', Y2(res.pA / 1e3).toFixed(1));
+  }
+  function tipHTML(n, r) {
+    let h = `<div class="tt">${f1(r.T)} °C</div>`;
+    if (n === 1) {
+      r.Qs.forEach((q, i) => { h += `<div class="tr"><span class="sw bg${i + 1}"></span><span>Cojinete ${i + 1}</span><span class="v">${f2(lpm(q))} L/min</span></div>`; });
+      if (r.alivio) h += `<div class="tn">Alivio abierto: devuelve ${f2(lpm(r.Qal))} L/min</div>`;
+    } else {
+      h += `<div class="tr"><span>Descarga</span><span class="v">${f1(r.pD / 1e3)} kPa</span></div>`;
+      h += `<div class="tr"><span>Múltiple</span><span class="v">${f1(r.pA / 1e3)} kPa</span></div>`;
+      h += `<div class="tr"><span>Potencia en el eje</span><span class="v">${f1(r.Peje)} W</span></div>`;
+    }
+    return h;
+  }
+  function bindChart(n) {
+    const svg = $('ch' + n), box = svg.parentElement, tip = $('tip' + n);
+    let dragging = false;
+    const tAt = ev => {
+      const rc = svg.getBoundingClientRect();
+      const sx = (ev.clientX - rc.left) / rc.width * CH.W;
+      const t = (sx - CH.l) / PW * 100;
+      return Math.max(0, Math.min(100, Math.round(t * 2) / 2));
+    };
+    const inPlot = ev => {
+      const rc = svg.getBoundingClientRect();
+      const sx = (ev.clientX - rc.left) / rc.width * CH.W, sy = (ev.clientY - rc.top) / rc.height * CH.H;
+      return sx >= CH.l && sx <= CH.l + PW && sy >= CH.t && sy <= CH.t + PH;
+    };
+    const hide = () => { tip.hidden = true; const hv = $('ch' + n + '-hv'); if (hv) hv.setAttribute('visibility', 'hidden'); };
+    const show = (ev, t) => {
+      const r = sis.resolver(t);
+      tip.innerHTML = tipHTML(n, r);
+      tip.hidden = false;
+      const hv = $('ch' + n + '-hv');
+      hv.setAttribute('x1', X(t).toFixed(1)); hv.setAttribute('x2', X(t).toFixed(1));
+      hv.setAttribute('visibility', 'visible');
+      const bw = box.clientWidth, tw = tip.offsetWidth;
+      const px = ev.clientX - box.getBoundingClientRect().left;
+      let left = px + 14;
+      if (left + tw > bw) left = px - tw - 14;
+      tip.style.left = `${Math.max(0, Math.min(bw - tw, left))}px`;
+    };
+    svg.addEventListener('pointermove', ev => {
+      if (!dragging && !inPlot(ev)) { hide(); return; }
+      const t = tAt(ev);
+      if (dragging) setT(t);
+      show(ev, t);
+    });
+    svg.addEventListener('pointerdown', ev => {
+      if (!inPlot(ev)) return;
+      dragging = true;
+      try { svg.setPointerCapture(ev.pointerId); } catch (err) { /* sin captura */ }
+      stopPlay();
+      const t = tAt(ev);
+      setT(t);
+      show(ev, t);
+    });
+    svg.addEventListener('pointerup', ev => { dragging = false; if (ev.pointerType !== 'mouse') hide(); });
+    svg.addEventListener('pointercancel', () => { dragging = false; hide(); });
+    svg.addEventListener('pointerleave', () => { if (!dragging) hide(); });
+  }
+
+  // ---------- panel lateral y tabla ----------
+  function renderReadouts() {
+    const r = res, qmin = P.Qmin_lpm * LPM, qs = r.Qs, Ts = tTxt(T), qm = trim(P.Qmin_lpm);
+    const fails = [0, 1, 2].filter(i => qs[i] < qmin * (1 - 1e-9));
+    let h;
+    if (!fails.length) {
+      let k = 0;
+      qs.forEach((q, i) => { if (q < qs[k]) k = i; });
+      h = `A ${Ts} °C los tres cojinetes reciben al menos ${qm} L/min. El que menos recibe es el cojinete ${k + 1}, con ${f2(lpm(qs[k]))} L/min.`;
+    } else if (fails.length === 1) {
+      const i = fails[0];
+      h = `A ${Ts} °C el cojinete ${i + 1} recibe <b class="bad">${f2(lpm(qs[i]))} L/min</b>, ${-pct(qs[i], qmin)} % menos que el mínimo de ${qm} L/min.`;
+    } else {
+      const who = fails.length === 3 ? 'los tres cojinetes' : `los cojinetes ${fails[0] + 1} y ${fails[1] + 1}`;
+      const v = fails.map(i => f2(lpm(qs[i])));
+      const vals = v.length === 3 ? `${v[0]}, ${v[1]} y ${v[2]}` : `${v[0]} y ${v[1]}`;
+      h = `A ${Ts} °C ${who} quedan bajo el mínimo de ${qm} L/min: reciben <b class="bad">${vals} L/min</b>.`;
+    }
+    if (r.alivio) h += ` La válvula de alivio está abierta y devuelve ${f2(lpm(r.Qal))} L/min al tanque.`;
+    if (sf) {
+      const v = sis.sinFriccion.Qs.map(q => f2(lpm(q)));
+      h += ` Sin fricción (solo K, como en el ejemplo de clase) el cálculo daría ${v[0]}, ${v[1]} y ${v[2]} L/min.`;
+    }
+    $('status').innerHTML = h;
+
+    const sfq = sis.sinFriccion.Qs.map(lpm);
+    const scale = Math.max(sweep.maxQ, P.Qmin_lpm, sf ? Math.max(sfq[0], sfq[1], sfq[2]) : 0) * 1.08;
+    for (let i = 0; i < 3; i++) {
+      const q = lpm(qs[i]), ok = fails.indexOf(i) < 0;
+      const bv = $('bv' + i);
+      bv.innerHTML = `${f2(q)}<small> L/min</small>${ok ? '' : '<span class="sr"> (bajo el mínimo)</span>'}`;
+      bv.classList.toggle('bad', !ok);
+      $('bf' + i).style.width = `${Math.min(100, q / scale * 100).toFixed(2)}%`;
+      $('bm' + i).style.left = `${(P.Qmin_lpm / scale * 100).toFixed(2)}%`;
+      const sm = $('bsf' + i);
+      sm.hidden = !sf;
+      if (sf) sm.style.left = `${(sfq[i] / scale * 100).toFixed(2)}%`;
+    }
+    $('bar-key').textContent = sf
+      ? `La raya marca el mínimo de ${qm} L/min y el rectángulo hueco, el cálculo sin fricción.`
+      : `La raya marca el mínimo de ${qm} L/min.`;
+
+    $('mD').textContent = `${f1(r.pD / 1e3)} kPa`;
+    $('mA').textContent = `${f1(r.pA / 1e3)} kPa`;
+    const mR = $('mR');
+    mR.textContent = r.alivio ? `abierta · ${f2(lpm(r.Qal))} L/min` : 'cerrada';
+    mR.classList.toggle('bad', r.alivio);
+    $('mH').textContent = `${f1(r.hB)} m`;
+    $('mP').textContent = `${f1(r.Peje)} W`;
+
+    const C = ' °C';
+    const span = iv => (iv[0] <= 0 && iv[1] >= 100 ? `en todo el rango de 0 a 100${C}`
+      : iv[0] <= 0 ? `hasta ${tTxt(iv[1])}${C}`
+        : iv[1] >= 100 ? `desde ${tTxt(iv[0])}${C}`
+          : `entre ${tTxt(iv[0])} y ${tTxt(iv[1])}${C}`);
+    const spanRel = iv => (iv[0] <= 0 && iv[1] >= 100 ? `está abierta en todo el rango de 0 a 100${C}`
+      : iv[0] <= 0 ? `abre por debajo de ${tTxt(iv[1])}${C}`
+        : iv[1] >= 100 ? `abre por encima de ${tTxt(iv[0])}${C}`
+          : `está abierta entre ${tTxt(iv[0])} y ${tTxt(iv[1])}${C}`);
+    const who = same(P, PRESETS.A) ? 'Con el diseño A' : same(P, PRESETS.B) ? 'Con el diseño B' : 'Con estos valores';
+    let w = sweep.winI.length
+      ? `${who}, los tres cojinetes reciben al menos ${qm} L/min ${sweep.winI.map(span).join(' y ')}.`
+      : `${who} no hay ninguna temperatura entre 0 y 100${C} en la que los tres cojinetes reciban ${qm} L/min.`;
+    w += sweep.relI.length ? ` La válvula de alivio ${sweep.relI.map(spanRel).join(' y ')}.` : ` La válvula de alivio no abre entre 0 y 100${C}.`;
+    $('window').textContent = w;
+
+    $('t-out').textContent = `${f1(T)} °C`;
+    $('t-props').innerHTML = `<span>ν ${f1(r.nuCst)} cSt</span><span class="sr">, </span><span>ρ ${Math.round(r.rho)} kg/m³</span>`;
+    $('t').setAttribute('aria-valuetext', `${f1(T)} grados Celsius`);
+  }
+  function renderTable() {
+    const r = res, qmin = P.Qmin_lpm * LPM;
+    const row = (name, sw, tubo, tr, d, fail) =>
+      `<tr${fail ? ' class="fail"' : ''}><td>${sw ? `<span class="sw ${sw}" aria-hidden="true"></span>` : ''}${name}</td><td class="tx">${tubo}</td>` +
+      `<td>${(tr.D * 1000).toFixed(2)}</td><td>${trim(tr.L)}</td><td>${tr.Ktot.toFixed(2)}</td><td class="q">${f2(lpm(d.Q))}</td>` +
+      `<td>${f2(d.V)}</td><td>${fmtInt(d.Re)}</td><td class="tx">${d.regimen}</td><td>${d.f.toFixed(4)}</td>` +
+      `<td>${f2(d.hf)}</td><td>${f2(d.hm)}</td><td>${d.hm > 0 ? f1(d.hf / d.hm) : '–'}</td></tr>`;
+    let h = row('Succión', '', '1″ × 0.065″', sis.succion, r.succ, false);
+    h += row('Suministro', '', '3/4″ × 0.065″', sis.suministro, r.sum, false);
+    sis.ramales.forEach((tr, i) => { h += row(`Ramal ${i + 1}`, `bg${i + 1}`, M.tuboPorId[P.tubos[i]].nombre, tr, r.ram[i], r.Qs[i] < qmin * (1 - 1e-9)); });
+    $('tab').innerHTML = h;
+    $('tab-sub').textContent = `a ${tTxt(T)} °C`;
+    $('tab-note').textContent = `En el suministro, el filtro agrega ${f2(r.sum.hfil)} m de aceite (${f1(r.sum.hfil * r.rho * G / 1e3)} kPa). La pérdida de carga es la misma en los tres ramales: ${f2(r.H)} m.`;
+  }
+
+  // ---------- estado y eventos ----------
+  function syncPresetUI() {
+    const isA = same(P, PRESETS.A), isB = same(P, PRESETS.B);
+    $('dA').setAttribute('aria-pressed', String(isA));
+    $('dB').setAttribute('aria-pressed', String(isB));
+    $('d-note').textContent = isA
+      ? 'Los tres ramales con tubo 1/2″ × 0.049″ (D = 10.21 mm).'
+      : isB ? 'Ramal 2 con tubo 1/2″ × 0.035″ y ramal 3 con 5/8″ × 0.049″.'
+        : 'Valores modificados. Los botones A y B vuelven a los del informe.';
+    $('sch-sub').textContent = `${isA ? 'Diseño A' : isB ? 'Diseño B' : 'Diseño modificado'} · ${tTxt(T)} °C`;
+  }
+  function update() {
+    res = sis.resolver(T);
+    renderSchematic();
+    renderReadouts();
+    renderMarkers();
+    renderTable();
+    syncPresetUI();
+  }
+  function recomputeAll() {
+    try {
+      sis = M.sistema(P);
+      sweep = computeSweep();
+    } catch (err) {
+      $('status').textContent = 'Con estos valores el cálculo no converge. Revisa los parámetros.';
+      return;
+    }
+    layoutSchematic();
+    sizeCharts();
+    buildChart1();
+    buildChart2();
+    update();
+  }
+  let raf = 0;
+  function scheduleAll() {
+    if (raf) return;
+    raf = requestAnimationFrame(() => { raf = 0; recomputeAll(); });
+  }
+  function setT(t) {
+    T = Math.max(0, Math.min(100, t));
+    $('t').value = String(T);
+    update();
+  }
+
+  const NUM = [
+    { id: 'qt', key: 'QT_lpm', min: 4, max: 40 },
+    { id: 'pal', key: 'pAlivio_kPa', min: 100, max: 2000 },
+    { id: 'eta', key: 'eta', min: 0.2, max: 1 },
+    { id: 'qmin', key: 'Qmin_lpm', min: 0.5, max: 20 },
+    { id: 'n40', key: 'nu40', min: 2, max: 2000 },
+    { id: 'n100', key: 'nu100', min: 1, max: 200 },
+    { id: 'r15', key: 'rho15', min: 600, max: 1200 }
+  ];
+  const BR = [
+    { pre: 'L', key: 'L', min: 0.2, max: 20 },
+    { pre: 'v', key: 'vueltas', min: 0, max: 12, int: true },
+    { pre: 'k', key: 'Kc', min: 0, max: 100 }
+  ];
+  function syncInputs() {
+    NUM.forEach(d => { const el = $(d.id); el.value = String(P[d.key]); el.removeAttribute('aria-invalid'); });
+    for (let i = 0; i < 3; i++) {
+      $('tb' + (i + 1)).value = P.tubos[i];
+      BR.forEach(d => { const el = $(d.pre + (i + 1)); el.value = String(P[d.key][i]); el.removeAttribute('aria-invalid'); });
+    }
+    $('perr').hidden = true;
+  }
+  function readNum(el, d) {
+    const v = parseFloat(el.value);
+    const ok = el.value.trim() !== '' && isFinite(v) && v >= d.min && v <= d.max && (!d.int || Number.isInteger(v));
+    el.setAttribute('aria-invalid', String(!ok));
+    return ok ? v : null;
+  }
+  function oilOK(n40, n100) {
+    const ok = n100 < n40;
+    $('perr').hidden = ok;
+    $('perr').textContent = ok ? '' : 'ν a 100 °C debe ser menor que ν a 40 °C.';
+    return ok;
+  }
+  NUM.forEach(d => {
+    const el = $(d.id);
+    el.addEventListener('input', () => {
+      const v = readNum(el, d);
+      if (v === null) return;
+      if (d.key === 'nu40' || d.key === 'nu100') {
+        const n40 = d.key === 'nu40' ? v : P.nu40, n100 = d.key === 'nu100' ? v : P.nu100;
+        if (!oilOK(n40, n100)) return;
+      }
+      P[d.key] = v;
+      scheduleAll();
+    });
+    el.addEventListener('change', () => { if (readNum(el, d) === null) { el.value = String(P[d.key]); el.removeAttribute('aria-invalid'); } });
+  });
+  for (let i = 0; i < 3; i++) {
+    BR.forEach(d => {
+      const el = $(d.pre + (i + 1));
+      el.addEventListener('input', () => { const v = readNum(el, d); if (v === null) return; P[d.key][i] = v; scheduleAll(); });
+      el.addEventListener('change', () => { if (readNum(el, d) === null) { el.value = String(P[d.key][i]); el.removeAttribute('aria-invalid'); } });
+    });
+    const sel = $('tb' + (i + 1));
+    M.TUBOS.forEach(t => { const o = document.createElement('option'); o.value = t.id; o.textContent = t.nombre; sel.appendChild(o); });
+    sel.addEventListener('change', () => { P.tubos[i] = sel.value; scheduleAll(); });
+  }
+  ['A', 'B'].forEach(k => {
+    $('d' + k).addEventListener('click', () => { P = clone(PRESETS[k]); syncInputs(); recomputeAll(); });
+  });
+  $('sf').addEventListener('change', ev => { sf = ev.target.checked; buildChart1(); update(); });
+  $('t').addEventListener('input', ev => { stopPlay(); setT(parseFloat(ev.target.value)); });
+
+  // Calentamiento: barrido cuasiestático de 10 a 70 °C
+  let playing = false, resumable = false, lastPlay = 0;
+  function playUI() {
+    $('play-txt').textContent = playing ? 'Pausar' : resumable ? 'Continuar hasta 70 °C' : 'Calentar de 10 a 70 °C';
+    $('play-ic').innerHTML = playing
+      ? '<path d="M3 2H6V12H3ZM8 2H11V12H8Z" fill="currentColor"/>'
+      : '<path d="M3 1.5L12 7L3 12.5Z" fill="currentColor"/>';
+    // Durante el barrido el resultado cambia en cada cuadro: no se anuncia hasta que se detiene.
+    $('status').setAttribute('aria-live', playing ? 'off' : 'polite');
+  }
+  function stepPlay(now) {
+    if (!playing) return;
+    const dt = Math.min(0.1, (now - lastPlay) / 1000);
+    lastPlay = now;
+    setT(Math.min(70, T + 6 * dt));
+    if (T >= 70) { playing = false; resumable = false; playUI(); return; }
+    requestAnimationFrame(stepPlay);
+  }
+  // El usuario toma el control (deslizador o gráfica): se cancela el barrido.
+  function stopPlay() { if (playing || resumable) { playing = false; resumable = false; playUI(); } }
+  $('play').addEventListener('click', () => {
+    if (playing) { playing = false; resumable = T < 70; playUI(); return; }
+    if (!resumable) setT(10);
+    playing = true;
+    resumable = false;
+    lastPlay = performance.now();
+    playUI();
+    requestAnimationFrame(stepPlay);
+  });
+
+  // Redibuja las gráficas si cambia el ancho de su columna.
+  let lastW = 0;
+  if ('ResizeObserver' in window) {
+    new ResizeObserver(() => {
+      const w = Math.round($('ch1').parentElement.clientWidth);
+      if (!sweep || !w || w === lastW) return;
+      lastW = w;
+      sizeCharts();
+      buildChart1();
+      buildChart2();
+      renderMarkers();
+    }).observe($('ch1').parentElement);
+  }
+
+  bindChart(1);
+  bindChart(2);
+  syncInputs();
+  recomputeAll();
+  playUI();
+  if (!reduceMotion) requestAnimationFrame(tick);
+})();
+</script>
+</body>
+</html>
